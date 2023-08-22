@@ -107,6 +107,7 @@ def protein_to_pyg(
     atom_types: List[str] = PROTEIN_ATOMS,
     remove_nonstandard: bool = True,
     store_het: bool = False,
+    all_atom: bool = False,
 ) -> Data:
     """
     Parses a protein (from either: a PDB code, PDB file or a UniProt ID
@@ -157,6 +158,9 @@ def protein_to_pyg(
     :param store_het: Whether or not to store heteroatoms in the ``Data``
         object. Default is ``False``.
     :type store_het: bool
+    :param all_atom: Whether or not to return all-atom representation in the 
+        ``Data`` object. Default is ``False`` (heirarchical representation).
+    :type all_atom: bool
     :returns: ``Data`` object with attributes: ``x`` (AtomTensor), ``residues``
         (list of 3-letter residue codes), id (ID of protein), residue_id (E.g.
         ``"A:SER:1"``), residue_type (torch.Tensor), ``chains`` (torch.Tensor).
@@ -236,7 +240,7 @@ def protein_to_pyg(
         df["residue_id"] = df.residue_id + ":" + df.insertion
 
     out = Data(
-        coords=protein_df_to_tensor(df, atoms_to_keep=atom_types),
+        coords=protein_df_to_tensor(df, atoms_to_keep=atom_types, all_atom=all_atom),
         residues=get_sequence(
             df,
             chains=chain_selection,
@@ -250,6 +254,9 @@ def protein_to_pyg(
     )
     if store_het:
         out.hetatms = [het_coords]
+    if all_atom:
+        out.atoms = torch.tensor(df["atom_name"].map(lambda x: PROTEIN_ATOMS.index(x)).values).long()
+        out.residue_atom_counts = torch.tensor(df.residue_number.value_counts(sort=False).values).long()
     return out
 
 
@@ -312,6 +319,7 @@ def protein_df_to_tensor(
     df: pd.DataFrame,
     atoms_to_keep: List[str] = PROTEIN_ATOMS,
     insertions: bool = True,
+    all_atom: bool = False,
     fill_value: float = 1e-5,
 ) -> AtomTensor:
     """
@@ -325,22 +333,33 @@ def protein_df_to_tensor(
     :type atoms_to_keep: List[str]
     :param insertions: Whether or not to keep insertions. Defaults to ``True``.
     :type insertions: bool
+    :param all_atom: Whether or not to return all-atom positions. Default is 
+        ``False`` (heirarchical representation).
+    :type all_atom: bool
     :param fill_value: Value to fill missing entries with. Defaults to ``1e-5``.
     :type fill_value: float
-    :returns: ``Length x Num_Atoms (default 37) x 3`` tensor.
-    :rtype: graphein.protein.tensor.types.AtomTensor
+    :returns: ``Length x Num_Atoms (default 37) x 3`` tensor, or 
+        ``Total Num_Atoms x 3`` if ``all_atom`` is ``True``.
+    :rtype: graphein.protein.tensor.types.AtomTensor, or torch.Tensor
     """
     num_residues = get_protein_length(df, insertions=insertions)
     df = df.loc[df["atom_name"].isin(atoms_to_keep)]
-    residue_indices = pd.factorize(get_residue_id(df, unique=False))[0]
-    atom_indices = df["atom_name"].map(lambda x: atoms_to_keep.index(x)).values
-
-    positions: AtomTensor = (
-        torch.zeros((num_residues, len(atoms_to_keep), 3)) + fill_value
-    )
-    positions[residue_indices, atom_indices] = torch.tensor(
-        df[["x_coord", "y_coord", "z_coord"]].values
-    ).float()
+    
+    if all_atom == True:
+        positions = torch.tensor(
+            df[["x_coord", "y_coord", "z_coord"]].values
+        ).float()
+    
+    else:
+        residue_indices = pd.factorize(get_residue_id(df, unique=False))[0]
+        atom_indices = df["atom_name"].map(lambda x: atoms_to_keep.index(x)).values
+        positions: AtomTensor = (
+            torch.zeros((num_residues, len(atoms_to_keep), 3)) + fill_value
+        )
+        positions[residue_indices, atom_indices] = torch.tensor(
+            df[["x_coord", "y_coord", "z_coord"]].values
+        ).float()
+    
     return positions
 
 
