@@ -184,9 +184,9 @@ def deprotonate_structure(df: pd.DataFrame) -> pd.DataFrame:
     :returns: Atomic dataframe with all ``atom_name == "H"`` removed.
     :rtype: pd.DataFrame
     """
-    log.debug(
-        "Deprotonating protein. This removes H atoms from the pdb_df dataframe"
-    )
+    # log.debug(
+    #     "Deprotonating protein. This removes H atoms from the pdb_df dataframe"
+    # )
     return filter_dataframe(
         df, by_column="element_symbol", list_of_values=["H"], boolean=False
     )
